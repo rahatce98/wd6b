@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f3864">
+<meta name="robots" content="noindex, nofollow">
 <title>WD6B Site Report</title>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
@@ -11,49 +12,145 @@
 <link rel="dns-prefetch" href="https://n-iafikach4x4sml47a5rysuk2euzpae7wwwccm7i-0lu-script.googleusercontent.com">
 <style>
   html,body{margin:0;height:100%;background:#1f3864;overflow:hidden}
-  iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#f2f5f9}
-  #wait{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;
+  iframe.pg{position:fixed;inset:0;width:100%;height:100%;border:0;background:#f2f5f9;visibility:hidden;pointer-events:none;z-index:1}
+  iframe.pg.on{visibility:visible;pointer-events:auto;z-index:2}
+  #wait{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;z-index:0;
         font:600 14px -apple-system,"Segoe UI",Roboto,Arial,sans-serif;letter-spacing:.3px}
+  /* tap feedback: a bar along the top and a small banner, at once */
+  #bar{position:fixed;left:0;top:0;height:3px;width:0;background:#f5b400;z-index:20;opacity:0;
+       box-shadow:0 0 8px rgba(245,180,0,.7);transition:width 8s cubic-bezier(.1,.7,.2,1),opacity .25s}
+  #bar.go{opacity:1;width:88%}
+  #bar.done{width:100%;opacity:0;transition:width .2s,opacity .4s .2s}
+  #toast{position:fixed;left:50%;top:10px;transform:translate(-50%,-60px);z-index:21;background:rgba(17,28,48,.92);color:#fff;
+         padding:9px 16px;border-radius:20px;font:700 13px -apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+         box-shadow:0 6px 18px rgba(0,0,0,.25);transition:transform .2s;white-space:nowrap;display:flex;gap:9px;align-items:center}
+  #toast.on{transform:translate(-50%,0)}
+  #toast i{width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div id="wait">Loading WD6B Site Report…</div>
-<iframe id="app" title="WD6B Site Report" allow="clipboard-write; fullscreen"></iframe>
+<div id="bar"></div>
+<div id="toast"><i></i><span id="tt">Opening…</span></div>
 <script>
-/* WD6B host page - shows the Apps Script web app full screen with no Google
-   banner on top. Everything after ?/# is passed to the app (p=view, k=..., etc).
-   The app's own protocol: it is told WD6B_HOST, asks WD6B_GO:<url> to move to
-   another page, and WD6B_FILE to have a download saved by this top page. */
+/* WD6B host page - the web app full screen, without Google's banner.
+   - a tap on another page shows a loading bar and banner at once;
+   - every page visited stays loaded (up to 5), so going back is instant and
+     anything typed in the entry form is kept;
+   - after the first page is ready, the Entry Form, the Daily Report and RFI
+     Entry are loaded quietly in the background.
+   The app's protocol: told WD6B_HOST, asks WD6B_GO:<url> to change page,
+   WD6B_FILE to have a download saved here. */
 var APP = 'https://script.google.com/macros/s/AKfycbx_Aj8vyxGF6YvBd3nqY_ywc_zAmt46O9mh1V32P4_sXSvYzfxRrBBQw3-0FUQDGkXJ/exec';
-var f = document.getElementById('app');
-/* the address bar shows only the plain address - the page in use is kept for
-   this tab (sessionStorage + history state), so refresh and Back still work */
-var KQ = 'wd6b_host_q';
-function keepQ(q) { try { sessionStorage.setItem(KQ, q || ''); } catch (e) {} }
+var NAMES = { form: 'Entry Form', view: 'Daily Report', report: 'Daily Report', reg: 'Progress Correction', register: 'Progress Correction',
+  rfiform: 'RFI Entry', rfientry: 'RFI Entry', rfidash: 'RFI Dashboard', rfidashboard: 'RFI Dashboard', rfigen: 'RFI Generator',
+  rfigenerator: 'RFI Generator', sp: 'Site Scope', permit: 'Permission', cons: 'Consultant', item: 'Item Sheet', all: 'Overall',
+  tgt: 'Target vs Achievement', calc: 'Calculator', ana: 'Analysis', scope: 'Design vs As-Built', nw: 'Site Scope' };
+var MAX = 5, FR = [], CUR = null, KQ = 'wd6b_host_q';
+
+function strip(q) { return String(q || '').replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''); }
+function keepQ(q) { try { sessionStorage.setItem(KQ, strip(q)); } catch (e) {} }
+function pageOf(q) {
+  var m = /[?&](?:p|page)=([^&#]*)/i.exec(q || '');
+  var p = m ? decodeURIComponent(m[1]).toLowerCase() : 'form';
+  if (/[?&]tab=permit/i.test(q || '')) p = 'permit';
+  return p || 'form';
+}
+/* pages that open without the passcode unlock themselves from the remembered one,
+   so they are kept once; an office page with the passcode is kept apart */
+var OPENP = { form: 1, view: 1, report: 1, sp: 1, permit: 1, nw: 1, rfiform: 1, rfientry: 1, rfidash: 1, rfidashboard: 1, reg: 1, register: 1 };
+function keyOf(q) { var p = pageOf(q); return p + (!OPENP[p] && /[?&]k=/.test(q || '') ? '|k' : ''); }
 function qs() {
   var q = location.search || '';
   if (!q && location.hash.length > 1) q = '?' + location.hash.slice(1);
   if (!q) { try { q = sessionStorage.getItem(KQ) || ''; } catch (e) {} }
   return q;
 }
+
+var bar = document.getElementById('bar'), toast = document.getElementById('toast'), tt = document.getElementById('tt'), TT = 0;
+function busy(name) {
+  clearTimeout(TT);
+  bar.className = ''; void bar.offsetWidth; bar.className = 'go';
+  tt.textContent = 'Opening ' + (name || 'page') + '…';
+  toast.className = 'on';
+  TT = setTimeout(idle, 30000);
+}
+function idle() {
+  clearTimeout(TT);
+  if (bar.className === 'go') { bar.className = 'done'; setTimeout(function () { if (bar.className === 'done') bar.className = ''; }, 700); }
+  toast.className = '';
+}
+
+function make(q, hidden) {
+  var f = document.createElement('iframe');
+  f.className = 'pg'; f.title = 'WD6B Site Report'; f.setAttribute('allow', 'clipboard-write; fullscreen');
+  var o = { f: f, key: keyOf(q), q: q, ready: false, used: Date.now() };
+  f.addEventListener('load', function () { document.getElementById('wait').style.display = 'none'; });
+  f.src = APP + q;
+  document.body.appendChild(f);
+  FR.push(o);
+  /* keep at most MAX pages: the least recently used one (never the one in view) goes */
+  while (FR.length > MAX) {
+    var old = null;
+    FR.forEach(function (x) { if (x !== CUR && x !== o && (!old || x.used < old.used)) old = x; });
+    if (!old) break;
+    old.f.remove(); FR.splice(FR.indexOf(old), 1);
+  }
+  return o;
+}
+function show(o) {
+  FR.forEach(function (x) { x.f.classList.toggle('on', x === o); });
+  CUR = o; o.used = Date.now();
+  if (o.ready) idle(); else busy(NAMES[pageOf(o.q)]);
+}
+function open(q, push) {
+  keepQ(q);
+  if (push) history.pushState({ q: q }, '', location.pathname);
+  var k = keyOf(q), o = null;
+  FR.forEach(function (x) { if (x.key === k) o = x; });
+  if (!o) o = make(q);
+  show(o);
+}
+function frameOf(src) {
+  for (var i = 0; i < FR.length; i++) {
+    var w = FR[i].f.contentWindow;
+    /* the app sits two frames deep inside Google's page */
+    try { if (src === w || src.parent === w || src.parent.parent === w) return FR[i]; } catch (e) {}
+  }
+  return null;
+}
+
+/* the two pages used most, loaded quietly once the first page is up */
+var PRE = ['', '?p=view', '?p=rfiform'], PRE_DONE = false;
+function preload() {
+  if (PRE_DONE) return; PRE_DONE = true;
+  var list = PRE.filter(function (q) { var k = keyOf(q); return !FR.some(function (x) { return x.key === k || x.key === k + '|k'; }); });
+  list.forEach(function (q, i) { setTimeout(function () {
+    var k = keyOf(q);
+    if (!FR.some(function (x) { return x.key === k || x.key === k + '|k'; })) make(q, true);
+  }, 2500 + i * 4000); });
+}
+
 var Q0 = qs();
-keepQ(Q0.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
 history.replaceState({ q: Q0 }, '', location.pathname);
-f.src = APP + Q0;
-f.addEventListener('load', function () { document.getElementById('wait').style.display = 'none'; });
+open(Q0, false);
+
 window.addEventListener('message', function (e) {
   var d = e.data;
-  /* the app frame says hello (or ready) - answer that very frame */
-  if (d === 'WD6B_HELLO' || d === 'WD6B_READY') { try { e.source.postMessage('WD6B_HOST', '*'); } catch (x) {} return; }
+  /* a page says hello (or ready) - answer it, and that page is ready */
+  if (d === 'WD6B_HELLO' || d === 'WD6B_READY') {
+    try { e.source.postMessage('WD6B_HOST', '*'); } catch (x) {}
+    var o = frameOf(e.source);
+    if (o) { o.ready = true; if (o === CUR) { idle(); preload(); } }
+    return;
+  }
   if (!/^https:\/\/[\w-]+(-\d+)?-script\.googleusercontent\.com$/.test(e.origin)) return;
   if (typeof d === 'string' && d.indexOf('WD6B_GO:') === 0) {
     var u = d.slice(8);
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(u)) return;
     var q = u.indexOf('?') >= 0 ? u.slice(u.indexOf('?')) : '';
-    /* the passcode (k=) goes to the app, never into this page's address bar */
-    keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
-    history.pushState({ q: q }, '', location.pathname);
-    f.src = APP + q;
+    open(q, true);
     return;
   }
   if (d && d.t === 'WD6B_FILE' && d.name && (d.buf || d.b64)) {
@@ -67,8 +164,7 @@ window.addEventListener('message', function (e) {
 });
 window.addEventListener('popstate', function (ev) {
   var q = (ev.state && typeof ev.state.q === 'string') ? ev.state.q : qs();
-  keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
-  f.src = APP + q;
+  open(q, false);
 });
 </script>
 </body>
