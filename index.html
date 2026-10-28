@@ -26,8 +26,20 @@
    another page, and WD6B_FILE to have a download saved by this top page. */
 var APP = 'https://script.google.com/macros/s/AKfycbx_Aj8vyxGF6YvBd3nqY_ywc_zAmt46O9mh1V32P4_sXSvYzfxRrBBQw3-0FUQDGkXJ/exec';
 var f = document.getElementById('app');
-function qs() { var q = location.search || ''; if (!q && location.hash.length > 1) q = '?' + location.hash.slice(1); return q; }
-f.src = APP + qs();
+/* the address bar shows only the plain address - the page in use is kept for
+   this tab (sessionStorage + history state), so refresh and Back still work */
+var KQ = 'wd6b_host_q';
+function keepQ(q) { try { sessionStorage.setItem(KQ, q || ''); } catch (e) {} }
+function qs() {
+  var q = location.search || '';
+  if (!q && location.hash.length > 1) q = '?' + location.hash.slice(1);
+  if (!q) { try { q = sessionStorage.getItem(KQ) || ''; } catch (e) {} }
+  return q;
+}
+var Q0 = qs();
+keepQ(Q0.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+history.replaceState({ q: Q0 }, '', location.pathname);
+f.src = APP + Q0;
 f.addEventListener('load', function () { document.getElementById('wait').style.display = 'none'; });
 window.addEventListener('message', function (e) {
   var d = e.data;
@@ -39,8 +51,8 @@ window.addEventListener('message', function (e) {
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(u)) return;
     var q = u.indexOf('?') >= 0 ? u.slice(u.indexOf('?')) : '';
     /* the passcode (k=) goes to the app, never into this page's address bar */
-    var shown = q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, '');
-    history.pushState(null, '', location.pathname + shown);
+    keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+    history.pushState({ q: q }, '', location.pathname);
     f.src = APP + q;
     return;
   }
@@ -53,7 +65,11 @@ window.addEventListener('message', function (e) {
     setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
   }
 });
-window.addEventListener('popstate', function () { f.src = APP + qs(); });
+window.addEventListener('popstate', function (ev) {
+  var q = (ev.state && typeof ev.state.q === 'string') ? ev.state.q : qs();
+  keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+  f.src = APP + q;
+});
 </script>
 </body>
 </html>
