@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3864">
+<title>WD6B Site Report</title>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+<link rel="preconnect" href="https://ssl.gstatic.com">
+<link rel="dns-prefetch" href="https://n-iafikach4x4sml47a5rysuk2euzpae7wwwccm7i-0lu-script.googleusercontent.com">
+<style>
+  html,body{margin:0;height:100%;background:#1f3864;overflow:hidden}
+  iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#f2f5f9}
+  #wait{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;
+        font:600 14px -apple-system,"Segoe UI",Roboto,Arial,sans-serif;letter-spacing:.3px}
+</style>
+</head>
+<body>
+<div id="wait">Loading WD6B Site Report…</div>
+<iframe id="app" title="WD6B Site Report" allow="clipboard-write; fullscreen"></iframe>
+<script>
+/* WD6B host page - shows the Apps Script web app full screen with no Google
+   banner on top. Everything after ?/# is passed to the app (p=view, k=..., etc).
+   The app's own protocol: it is told WD6B_HOST, asks WD6B_GO:<url> to move to
+   another page, and WD6B_FILE to have a download saved by this top page. */
+var APP = 'https://script.google.com/macros/s/AKfycbx_Aj8vyxGF6YvBd3nqY_ywc_zAmt46O9mh1V32P4_sXSvYzfxRrBBQw3-0FUQDGkXJ/exec';
+var f = document.getElementById('app');
+/* the address bar shows only the plain address - the page in use is kept for
+   this tab (sessionStorage + history state), so refresh and Back still work */
+var KQ = 'wd6b_host_q';
+function keepQ(q) { try { sessionStorage.setItem(KQ, q || ''); } catch (e) {} }
+function qs() {
+  var q = location.search || '';
+  if (!q && location.hash.length > 1) q = '?' + location.hash.slice(1);
+  if (!q) { try { q = sessionStorage.getItem(KQ) || ''; } catch (e) {} }
+  return q;
+}
+var Q0 = qs();
+keepQ(Q0.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+history.replaceState({ q: Q0 }, '', location.pathname);
+f.src = APP + Q0;
+f.addEventListener('load', function () { document.getElementById('wait').style.display = 'none'; });
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  /* the app frame says hello (or ready) - answer that very frame */
+  if (d === 'WD6B_HELLO' || d === 'WD6B_READY') { try { e.source.postMessage('WD6B_HOST', '*'); } catch (x) {} return; }
+  if (!/^https:\/\/[\w-]+(-\d+)?-script\.googleusercontent\.com$/.test(e.origin)) return;
+  if (typeof d === 'string' && d.indexOf('WD6B_GO:') === 0) {
+    var u = d.slice(8);
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(u)) return;
+    var q = u.indexOf('?') >= 0 ? u.slice(u.indexOf('?')) : '';
+    /* the passcode (k=) goes to the app, never into this page's address bar */
+    keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+    history.pushState({ q: q }, '', location.pathname);
+    f.src = APP + q;
+    return;
+  }
+  if (d && d.t === 'WD6B_FILE' && d.name && (d.buf || d.b64)) {
+    var part = d.buf;
+    if (!part) { var bin = atob(d.b64); part = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) part[i] = bin.charCodeAt(i); }
+    var url = URL.createObjectURL(new Blob([part], { type: d.mime || 'application/octet-stream' }));
+    var l = document.createElement('a'); l.href = url; l.download = d.name;
+    document.body.appendChild(l); l.click(); l.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+  }
+});
+window.addEventListener('popstate', function (ev) {
+  var q = (ev.state && typeof ev.state.q === 'string') ? ev.state.q : qs();
+  keepQ(q.replace(/([?&])k=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+  f.src = APP + q;
+});
+</script>
+</body>
+</html>
